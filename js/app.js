@@ -124,11 +124,29 @@ async function fetchCategories() {
     try {
         const res = await fetch('api/categories.php');
         const data = await res.json();
-        if (data.success && data.data.length > 0) {
+        if (data.success && data.data && data.data.length > 0) {
             categories = data.data;
-            populateCategorySelects();
+        } else {
+            categories = [
+                { nombre: 'Lácteos' },
+                { nombre: 'Carnes' },
+                { nombre: 'Bebidas' },
+                { nombre: 'Panadería' },
+                { nombre: 'Refrigerados' }
+            ];
         }
-    } catch (e) { console.error('Error cargando categorías:', e); }
+        populateCategorySelects();
+    } catch (e) {
+        console.error('Error cargando categorías:', e);
+        categories = [
+            { nombre: 'Lácteos' },
+            { nombre: 'Carnes' },
+            { nombre: 'Bebidas' },
+            { nombre: 'Panadería' },
+            { nombre: 'Refrigerados' }
+        ];
+        populateCategorySelects();
+    }
 }
 
 function populateCategorySelects() {
