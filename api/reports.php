@@ -9,7 +9,11 @@ if (!in_array($_SESSION['user_role'], ['administrador', 'encargado'])) {
     die('No autorizado para generar reportes.');
 }
 
-require_once '../config/database.php';
+require_once '../config/helpers.php';
+
+$cd = curdate();
+$da30 = date_add(30);
+$dd = datediff('p.fecha_vencimiento', $cd);
 
 $action = $_GET['action'] ?? 'export_all';
 $filename = 'freshstock_reporte_' . date('Y-m-d') . '.csv';
@@ -22,13 +26,8 @@ $output = fopen('php://output', 'w');
 if ($action === 'export_all') {
     fputcsv($output, ['ID', 'Nombre', 'Categoría', 'Stock', 'Stock Mínimo', 'Precio Compra', 'Precio Venta', 'Ganancia/Unidad', 'Fecha Vencimiento', 'Estado']);
 
-    $stmt = $pdo->query("SELECT *, 
-        CASE 
-            WHEN fecha_vencimiento < CURDATE() THEN 'VENCIDO'
-            WHEN fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'POR VENCER'
-            ELSE 'OK'
-        END as estado
-        FROM productos ORDER BY nombre");
+    $ev = "CASE WHEN p.fecha_vencimiento < $cd THEN 'VENCIDO' WHEN p.fecha_vencimiento <= $da30 THEN 'POR VENCER' ELSE 'OK' END";
+    $stmt = $pdo->query("SELECT p.*, $ev as estado FROM productos p ORDER BY p.nombre");
 
     while ($row = $stmt->fetch()) {
         fputcsv($output, [
@@ -42,7 +41,7 @@ if ($action === 'export_all') {
 } elseif ($action === 'export_expired') {
     fputcsv($output, ['ID', 'Nombre', 'Categoría', 'Stock', 'Precio Compra', 'Precio Venta', 'Pérdida Estimada', 'Fecha Vencimiento']);
 
-    $stmt = $pdo->query("SELECT *, (precio_compra * stock) as perdida FROM productos WHERE fecha_vencimiento < CURDATE() ORDER BY fecha_vencimiento");
+    $stmt = $pdo->query("SELECT *, (precio_compra * stock) as perdida FROM productos WHERE fecha_vencimiento < $cd ORDER BY fecha_vencimiento");
 
     while ($row = $stmt->fetch()) {
         fputcsv($output, [
@@ -56,7 +55,7 @@ if ($action === 'export_all') {
 } elseif ($action === 'export_expiring') {
     fputcsv($output, ['ID', 'Nombre', 'Categoría', 'Stock', 'Precio Compra', 'Precio Venta', 'Fecha Vencimiento', 'Días Restantes']);
 
-    $stmt = $pdo->query("SELECT *, DATEDIFF(fecha_vencimiento, CURDATE()) as dias_restantes FROM productos WHERE fecha_vencimiento >= CURDATE() AND fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) ORDER BY fecha_vencimiento");
+    $stmt = $pdo->query("SELECT p.*, $dd as dias_restantes FROM productos p WHERE p.fecha_vencimiento >= $cd AND p.fecha_vencimiento <= $da30 ORDER BY p.fecha_vencimiento");
 
     while ($row = $stmt->fetch()) {
         fputcsv($output, [

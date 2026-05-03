@@ -8,14 +8,13 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type');
-
-require_once '../config/database.php';
+require_once '../config/helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
+
+$cd = curdate();
+$da30 = date_add(30);
 
 try {
     switch ($method) {
@@ -29,13 +28,10 @@ try {
                 if (!$product) throw new Exception('Producto no encontrado');
                 echo json_encode(['success' => true, 'data' => $product]);
             } elseif ($action === 'get_kpis') {
-                $today = date('Y-m-d');
-                $thirty_days = date('Y-m-d', strtotime('+30 days'));
-
                 $total = $pdo->query("SELECT COUNT(*) FROM productos")->fetchColumn();
                 $low_stock = $pdo->query("SELECT COUNT(*) FROM productos WHERE stock <= stock_min")->fetchColumn();
-                $expired = $pdo->query("SELECT COUNT(*) FROM productos WHERE fecha_vencimiento < '$today'")->fetchColumn();
-                $expiring = $pdo->query("SELECT COUNT(*) FROM productos WHERE fecha_vencimiento >= '$today' AND fecha_vencimiento <= '$thirty_days'")->fetchColumn();
+                $expired = $pdo->query("SELECT COUNT(*) FROM productos WHERE fecha_vencimiento < $cd")->fetchColumn();
+                $expiring = $pdo->query("SELECT COUNT(*) FROM productos WHERE fecha_vencimiento >= $cd AND fecha_vencimiento <= $da30")->fetchColumn();
                 $inventory_value = $pdo->query("SELECT COALESCE(SUM(stock * precio_compra), 0) FROM productos")->fetchColumn();
                 $estimated_profit = $pdo->query("SELECT COALESCE(SUM((precio_venta - precio_compra) * stock), 0) FROM productos")->fetchColumn();
 
@@ -51,17 +47,9 @@ try {
                     ]
                 ]);
             } else {
-                $stmt = $pdo->query("SELECT *, 
-                    CASE 
-                        WHEN fecha_vencimiento < CURDATE() THEN 'vencido'
-                        WHEN fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'por_vencer'
-                        ELSE 'ok'
-                    END as estado_vencimiento,
-                    CASE 
-                        WHEN stock <= stock_min THEN 'bajo'
-                        ELSE 'ok'
-                    END as estado_stock
-                    FROM productos ORDER BY fecha_vencimiento ASC");
+                $ev = "CASE WHEN fecha_vencimiento < $cd THEN 'vencido' WHEN fecha_vencimiento <= $da30 THEN 'por_vencer' ELSE 'ok' END";
+                $es = "CASE WHEN stock <= stock_min THEN 'bajo' ELSE 'ok' END";
+                $stmt = $pdo->query("SELECT *, $ev as estado_vencimiento, $es as estado_stock FROM productos ORDER BY fecha_vencimiento ASC");
                 $products = $stmt->fetchAll();
                 echo json_encode(['success' => true, 'data' => $products]);
             }
@@ -96,7 +84,8 @@ try {
                 $input['fecha_vencimiento']
             ]);
 
-            echo json_encode(['success' => true, 'message' => 'Producto registrado correctamente', 'id' => $pdo->lastInsertId()]);
+            $new_id = $is_pgsql ? (int)$pdo->lastInsertId('productos_id_seq') : (int)$pdo->lastInsertId();
+            echo json_encode(['success' => true, 'message' => 'Producto registrado correctamente', 'id' => $new_id]);
             break;
 
         case 'PUT':

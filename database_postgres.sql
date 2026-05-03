@@ -1,9 +1,7 @@
 -- ============================================================
--- FreshStock - PostgreSQL Database (Supabase)
+-- FreshStock - PostgreSQL (Supabase)
+-- Ejecuta este script en Supabase → SQL Editor
 -- ============================================================
-
--- Enable UUID extension (optional, but good for Supabase)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Categorías
 CREATE TABLE IF NOT EXISTS categorias (
@@ -12,7 +10,7 @@ CREATE TABLE IF NOT EXISTS categorias (
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Usuarios
+-- Usuarios (rol con CHECK en vez de ENUM)
 CREATE TABLE IF NOT EXISTS usuarios (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
@@ -36,7 +34,7 @@ CREATE TABLE IF NOT EXISTS productos (
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Trigger for auto-updating fecha_actualizacion
+-- Trigger para auto-actualizar fecha_actualizacion
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -45,11 +43,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_productos_updated_at ON productos;
-CREATE TRIGGER trigger_productos_updated_at
+DROP TRIGGER IF EXISTS trg_productos_updated ON productos;
+CREATE TRIGGER trg_productos_updated
     BEFORE UPDATE ON productos
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Desactivar RLS para acceso público (necesario para la API PHP)
+ALTER TABLE categorias DISABLE ROW LEVEL SECURITY;
+ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
+ALTER TABLE productos DISABLE ROW LEVEL SECURITY;
 
 -- Categorías por defecto
 INSERT INTO categorias (nombre) VALUES

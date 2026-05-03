@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: freshstock
+    env: php
+    buildCommand: ""
+    startCommand: heroku-php-apache2 .
+    envVars:
+      - key: DB_TYPE
+        value: pgsql
+      - key: DB_HOST
+        value: isdglbwjlnhgvszlcfjq.supabase.co
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        value: postgres
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASS
+        sync: false
+    healthCheckPath: /login.php
