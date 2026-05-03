@@ -151,6 +151,7 @@ async function fetchCategories() {
 
 function populateCategorySelects() {
     if (!categories.length) return;
+
     const prodSelect = document.getElementById('categoria');
     if (prodSelect) {
         const currentVal = prodSelect.value;
@@ -161,8 +162,11 @@ function populateCategorySelects() {
             opt.textContent = c.nombre;
             prodSelect.appendChild(opt);
         });
-        if (currentVal) prodSelect.value = currentVal;
+        if (currentVal && [...prodSelect.options].some(o => o.value === currentVal)) {
+            prodSelect.value = currentVal;
+        }
     }
+
     const filterSelect = document.getElementById('filterCategory');
     if (filterSelect) {
         const currentFilter = filterSelect.value;
@@ -175,12 +179,16 @@ function populateCategorySelects() {
                 filterSelect.appendChild(opt);
             }
         });
-        if (currentFilter) filterSelect.value = currentFilter;
+        if (currentFilter && [...filterSelect.options].some(o => o.value === currentFilter)) {
+            filterSelect.value = currentFilter;
+        }
     }
 }
 
 function renderTablaProductos(items) {
-    document.getElementById('productos-table').innerHTML = items.map(p => {
+    const tbody = document.getElementById('productos-table');
+    if (!tbody) return;
+    tbody.innerHTML = items.map(p => {
         const badge = getStatusBadge(p.estado_vencimiento, p.estado_stock);
         return `<tr>
             <td><strong>${p.nombre}</strong></td>
@@ -263,6 +271,9 @@ async function openModal(productId = null) {
     const modal = document.getElementById('productModal');
     document.getElementById('productForm').reset();
     document.getElementById('productId').value = '';
+
+    await populateCategorySelects();
+
     if (productId) {
         document.getElementById('modalTitle').textContent = 'Editar Producto';
         const p = products.find(x => x.id === productId);
@@ -333,70 +344,116 @@ async function loadAdminCategorias() {
         if (catData.success) categories = catData.data;
         if (prodData.success) products = prodData.data;
 
-        document.getElementById('cat-count').textContent = categories.length;
-        document.getElementById('prod-count').textContent = products.length;
-        const sinProd = categories.filter(c => c.total_productos === 0).length;
-        document.getElementById('cat-sin-productos').textContent = sinProd;
+        const elCatCount = document.getElementById('cat-count');
+        const elProdCount = document.getElementById('prod-count');
+        const elSinProd = document.getElementById('cat-sin-productos');
+        const elTable = document.getElementById('categories-table');
 
-        document.getElementById('categories-table').innerHTML = categories.map(c =>
-            `<tr>
-                <td>${c.id}</td>
-                <td><strong>${c.nombre}</strong></td>
-                <td>${c.total_productos}</td>
-                <td>$${parseFloat(c.valor).toFixed(2)}</td>
-                <td><span class="badge badge-green">$${parseFloat(c.ganancia).toFixed(2)}</span></td>
-                <td>${c.por_vencer > 0 ? `<span class="badge badge-yellow">${c.por_vencer}</span>` : '<span class="text-green">0</span>'}</td>
-                <td>${c.vencidos > 0 ? `<span class="badge badge-red">${c.vencidos}</span>` : '<span class="text-green">0</span>'}</td>
-                <td><button class="btn-icon" onclick="deleteCategory(${c.id}, '${c.nombre}')" title="Eliminar">🗑️</button></td>
-            </tr>`
-        ).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;">No hay categorías</td></tr>';
+        if (elCatCount) elCatCount.textContent = categories.length;
+        if (elProdCount) elProdCount.textContent = products.length;
+        if (elSinProd) {
+            const sinProd = categories.filter(c => (c.total_productos || 0) === 0).length;
+            elSinProd.textContent = sinProd;
+        }
+
+        if (elTable) {
+            elTable.innerHTML = categories.map(c =>
+                `<tr>
+                    <td>${c.id}</td>
+                    <td><strong>${c.nombre}</strong></td>
+                    <td>${c.total_productos || 0}</td>
+                    <td>$${parseFloat(c.valor || 0).toFixed(2)}</td>
+                    <td><span class="badge badge-green">$${parseFloat(c.ganancia || 0).toFixed(2)}</span></td>
+                    <td>${(c.por_vencer || 0) > 0 ? `<span class="badge badge-yellow">${c.por_vencer}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
+                    <td>${(c.vencidos || 0) > 0 ? `<span class="badge badge-red">${c.vencidos}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
+                    <td><button class="btn-icon" onclick="deleteCategory(${c.id}, '${c.nombre}')" title="Eliminar">🗑️</button></td>
+                </tr>`
+            ).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;">No hay categorías. Haz clic en "+ Nueva Categoría" para crear una.</td></tr>';
+        }
 
         populateCategorySelects();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('Error cargando categorías:', e); }
 }
 
-function deleteCategory(id, nombre) {
+async function deleteCategory(id, nombre) {
     if (!confirm(`¿Eliminar categoría "${nombre}"? Solo se puede si no tiene productos.`)) return;
-    fetch(`api/categories.php?id=${id}`, { method: 'DELETE' })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) { showToast(d.message, 'success'); loadAdminCategorias(); }
-            else showToast(d.message, 'error');
-        })
-        .catch(() => showToast('Error al eliminar', 'error'));
+    try {
+        const res = await fetch(`api/categories.php?id=${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            loadAdminCategorias();
+            populateCategorySelects();
+        } else {
+            showToast(data.message, 'error');
+        }
+    } catch (e) { showToast('Error al eliminar', 'error'); }
 }
 
 async function loadAdminGanancias() {
-    const [kpiRes, prodRes] = await Promise.all([fetch('api/products.php?action=get_kpis'), fetch('api/products.php')]);
-    const kpi = (await kpiRes.json()).data;
-    const prodData = await prodRes.json();
-    document.getElementById('admin-ganancia-total').textContent = '$' + kpi.ganancia_estimada.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('admin-valor-total').textContent = '$' + kpi.valor_inventario.toLocaleString('en-US', {minimumFractionDigits: 2});
-    if (prodData.success) products = prodData.data;
+    try {
+        const [kpiRes, prodRes] = await Promise.all([
+            fetch('api/products.php?action=get_kpis'),
+            fetch('api/products.php')
+        ]);
+        const kpiData = await kpiRes.json();
+        const prodData = await prodRes.json();
 
-    const byProfit = products.map(p => ({...p, ganancia_unidad: p.precio_venta - p.precio_compra, ganancia_total: (p.precio_venta - p.precio_compra)*p.stock})).sort((a,b) => b.ganancia_total - a.ganancia_total);
-    const margenProm = products.length ? (products.reduce((s,p) => s + ((p.precio_venta - p.precio_compra)/p.precio_venta*100), 0) / products.length).toFixed(0) : 0;
-    document.getElementById('admin-margen-prom').textContent = margenProm + '%';
+        const kpi = kpiData.data || {};
+        if (prodData.success) products = prodData.data;
 
-    document.getElementById('admin-profit-list').innerHTML = byProfit.map((p,i) => {
-        const rank = i < 3 ? ['🥇','🥈','🥉'][i] : (i+1);
-        return `<tr><td>${rank}</td><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>$${parseFloat(p.precio_compra).toFixed(2)}</td><td>$${parseFloat(p.precio_venta).toFixed(2)}</td><td>$${p.ganancia_unidad.toFixed(2)}</td><td><span class="badge badge-green">$${p.ganancia_total.toFixed(2)}</span></td></tr>`;
-    }).join('');
+        const elGananciaTotal = document.getElementById('admin-ganancia-total');
+        const elValorTotal = document.getElementById('admin-valor-total');
+        const elMargenProm = document.getElementById('admin-margen-prom');
+        const elProfitList = document.getElementById('admin-profit-list');
+        const elCatProfit = document.getElementById('admin-category-profit');
 
-    // Category profit bars
-    const catProfit = {};
-    products.forEach(p => {
-        if (!catProfit[p.categoria]) catProfit[p.categoria] = 0;
-        catProfit[p.categoria] += (p.precio_venta - p.precio_compra) * p.stock;
-    });
-    const maxP = Math.max(...Object.values(catProfit), 1);
-    document.getElementById('admin-category-profit').innerHTML = Object.entries(catProfit).sort((a,b) => b[1]-a[1]).map(([name, profit]) => {
-        const pct = (profit / maxP * 100).toFixed(0);
-        return `<div class="category-bar-item">
-            <div class="category-bar-label"><span>${name}</span><span>$${profit.toFixed(2)}</span></div>
-            <div class="category-bar-track"><div class="category-bar-fill" style="width:${pct}%"></div></div>
-        </div>`;
-    }).join('');
+        if (elGananciaTotal) elGananciaTotal.textContent = '$' + (kpi.ganancia_estimada || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+        if (elValorTotal) elValorTotal.textContent = '$' + (kpi.valor_inventario || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+        const byProfit = products.map(p => ({
+            ...p,
+            ganancia_unidad: p.precio_venta - p.precio_compra,
+            ganancia_total: (p.precio_venta - p.precio_compra) * p.stock
+        })).sort((a, b) => b.ganancia_total - a.ganancia_total);
+
+        const margenProm = products.length
+            ? (products.reduce((s, p) => s + ((p.precio_venta - p.precio_compra) / p.precio_venta * 100), 0) / products.length).toFixed(0)
+            : 0;
+        if (elMargenProm) elMargenProm.textContent = margenProm + '%';
+
+        if (elProfitList) {
+            elProfitList.innerHTML = byProfit.map((p, i) => {
+                const rank = i < 3 ? ['🥇', '🥈', '🥉'][i] : (i + 1);
+                return `<tr>
+                    <td>${rank}</td>
+                    <td><strong>${p.nombre}</strong></td>
+                    <td>${p.categoria}</td>
+                    <td>${p.stock}</td>
+                    <td>$${parseFloat(p.precio_compra).toFixed(2)}</td>
+                    <td>$${parseFloat(p.precio_venta).toFixed(2)}</td>
+                    <td>$${p.ganancia_unidad.toFixed(2)}</td>
+                    <td><span class="badge badge-green">$${p.ganancia_total.toFixed(2)}</span></td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;">No hay productos</td></tr>';
+        }
+
+        if (elCatProfit) {
+            const catProfit = {};
+            products.forEach(p => {
+                if (!catProfit[p.categoria]) catProfit[p.categoria] = 0;
+                catProfit[p.categoria] += (p.precio_venta - p.precio_compra) * p.stock;
+            });
+            const maxP = Math.max(...Object.values(catProfit), 1);
+            elCatProfit.innerHTML = Object.entries(catProfit).sort((a, b) => b[1] - a[1]).map(([name, profit]) => {
+                const pct = (profit / maxP * 100).toFixed(0);
+                return `<div class="category-bar-item">
+                    <div class="category-bar-label"><span>${name}</span><span>$${profit.toFixed(2)}</span></div>
+                    <div class="category-bar-track"><div class="category-bar-fill" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join('') || '<p style="text-align:center;color:#9ca3af;padding:1rem;">Sin datos</p>';
+        }
+    } catch (e) { console.error('Error cargando ganancias:', e); }
 }
 
 // Modal categoría
@@ -418,8 +475,7 @@ document.getElementById('categoryForm')?.addEventListener('submit', async (e) =>
             showToast(data.message, 'success');
             closeCategoryModal();
             document.getElementById('catName').value = '';
-            await fetchCategories();
-            loadAdminCategorias();
+            await loadAdminCategorias();
         } else {
             showToast(data.message, 'error');
         }
@@ -433,6 +489,7 @@ function downloadReport(action) { window.location.href = `api/reports.php?action
 // Shared
 function renderCategoryBars(containerId) {
     const container = document.getElementById(containerId);
+    if (!container) return;
     const cats = {};
     products.forEach(p => {
         if (!cats[p.categoria]) cats[p.categoria] = { count: 0, value: 0 };
@@ -447,7 +504,6 @@ function renderCategoryBars(containerId) {
 
 // INIT
 document.addEventListener('DOMContentLoaded', () => {
-    fetchCategories();
     if (userRole === 'dueño') loadDuenoResumen();
     if (userRole === 'encargado') loadEncargadoProductos();
     if (userRole === 'administrador') loadAdminCategorias();
