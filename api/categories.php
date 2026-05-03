@@ -20,8 +20,8 @@ try {
                 $stmt = $pdo->prepare("SELECT c.*, COUNT(p.id) as total_productos,
                     COALESCE(SUM(p.stock * p.precio_compra), 0) as valor,
                     COALESCE(SUM((p.precio_venta - p.precio_compra) * p.stock), 0) as ganancia,
-                    SUM(CASE WHEN p.estado_vencimiento = 'por_vencer' THEN 1 ELSE 0 END) as por_vencer,
-                    SUM(CASE WHEN p.estado_vencimiento = 'vencido' THEN 1 ELSE 0 END) as vencidos
+                    SUM(CASE WHEN p.fecha_vencimiento >= CURDATE() AND p.fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as por_vencer,
+                    SUM(CASE WHEN p.fecha_vencimiento < CURDATE() THEN 1 ELSE 0 END) as vencidos
                     FROM categorias c
                     LEFT JOIN productos p ON c.nombre = p.categoria
                     WHERE c.id = ?
@@ -34,8 +34,8 @@ try {
                 $stmt = $pdo->query("SELECT c.*, COUNT(p.id) as total_productos,
                     COALESCE(SUM(p.stock * p.precio_compra), 0) as valor,
                     COALESCE(SUM((p.precio_venta - p.precio_compra) * p.stock), 0) as ganancia,
-                    SUM(CASE WHEN p.estado_vencimiento = 'por_vencer' THEN 1 ELSE 0 END) as por_vencer,
-                    SUM(CASE WHEN p.estado_vencimiento = 'vencido' THEN 1 ELSE 0 END) as vencidos
+                    SUM(CASE WHEN p.fecha_vencimiento >= CURDATE() AND p.fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as por_vencer,
+                    SUM(CASE WHEN p.fecha_vencimiento < CURDATE() THEN 1 ELSE 0 END) as vencidos
                     FROM categorias c
                     LEFT JOIN productos p ON c.nombre = p.categoria
                     GROUP BY c.id
