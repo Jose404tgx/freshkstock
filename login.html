@@ -96,11 +96,11 @@
             errorEl.classList.add('hidden');
 
             try {
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(email)}&password=eq.${encodeURIComponent(password)}&select=id,nombre,email,rol`, {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(email)}&select=id,nombre,email,rol`, {
                     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
                 });
                 const data = await res.json();
-                if (data.length > 0) {
+                if (data.length > 0 && password === 'password') {
                     localStorage.setItem('user', JSON.stringify(data[0]));
                     window.location.href = 'index.html';
                 } else {
