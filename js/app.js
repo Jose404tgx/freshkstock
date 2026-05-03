@@ -46,7 +46,12 @@ function getDaysRemaining(dateStr) {
 async function fetchProducts() {
     const res = await fetch('api/products.php');
     const data = await res.json();
-    if (data.success) products = data.data;
+    if (data.success) {
+        products = data.data;
+    } else {
+        showToast('Error: ' + (data.message || 'No se pudieron cargar productos'), 'error');
+        products = [];
+    }
 }
 
 // ==========================================
@@ -113,45 +118,20 @@ async function loadDuenoGanancias() {
 }
 
 // ==========================================
-// ENCARGADO - Inventario (CRUD)
+// CATEGORÍAS - Desde BD siempre
 // ==========================================
-async function loadEncargadoProductos() {
-    await Promise.all([fetchProducts(), fetchCategories()]);
-    renderTablaProductos(products);
-}
-
 async function fetchCategories() {
-    try {
-        const res = await fetch('api/categories.php');
-        const data = await res.json();
-        if (data.success && data.data && data.data.length > 0) {
-            categories = data.data;
-        } else {
-            categories = [
-                { nombre: 'Lácteos' },
-                { nombre: 'Carnes' },
-                { nombre: 'Bebidas' },
-                { nombre: 'Panadería' },
-                { nombre: 'Refrigerados' }
-            ];
-        }
-        populateCategorySelects();
-    } catch (e) {
-        console.error('Error cargando categorías:', e);
-        categories = [
-            { nombre: 'Lácteos' },
-            { nombre: 'Carnes' },
-            { nombre: 'Bebidas' },
-            { nombre: 'Panadería' },
-            { nombre: 'Refrigerados' }
-        ];
-        populateCategorySelects();
+    const res = await fetch('api/categories.php');
+    const data = await res.json();
+    if (!data.success) {
+        throw new Error(data.message || 'Error al cargar categorías');
     }
+    categories = data.data;
+    populateCategorySelects();
+    return categories;
 }
 
 function populateCategorySelects() {
-    if (!categories.length) return;
-
     const prodSelect = document.getElementById('categoria');
     if (prodSelect) {
         const currentVal = prodSelect.value;
@@ -182,6 +162,19 @@ function populateCategorySelects() {
         if (currentFilter && [...filterSelect.options].some(o => o.value === currentFilter)) {
             filterSelect.value = currentFilter;
         }
+    }
+}
+
+// ==========================================
+// ENCARGADO - Inventario (CRUD)
+// ==========================================
+async function loadEncargadoProductos() {
+    try {
+        await Promise.all([fetchProducts(), fetchCategories()]);
+        renderTablaProductos(products);
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+        console.error(e);
     }
 }
 
@@ -228,51 +221,56 @@ function filterProducts() {
 }
 
 async function loadEncargadoVencer() {
-    await Promise.all([fetchProducts(), fetchCategories()]);
-    const expiring = products.filter(p => p.estado_vencimiento === 'por_vencer').sort((a,b) => new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento));
-    const expired = products.filter(p => p.estado_vencimiento === 'vencido');
-    const expiring7 = products.filter(p => { const d = getDaysRemaining(p.fecha_vencimiento); return d >= 0 && d <= 7; });
+    try {
+        await Promise.all([fetchProducts(), fetchCategories()]);
+        const expiring = products.filter(p => p.estado_vencimiento === 'por_vencer').sort((a,b) => new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento));
+        const expired = products.filter(p => p.estado_vencimiento === 'vencido');
+        const expiring7 = products.filter(p => { const d = getDaysRemaining(p.fecha_vencimiento); return d >= 0 && d <= 7; });
 
-    document.getElementById('encargado-expired-count').textContent = expired.length;
-    document.getElementById('encargado-7-count').textContent = expiring7.length;
-    document.getElementById('encargado-30-count').textContent = expiring.length;
+        document.getElementById('encargado-expired-count').textContent = expired.length;
+        document.getElementById('encargado-7-count').textContent = expiring7.length;
+        document.getElementById('encargado-30-count').textContent = expiring.length;
 
-    document.getElementById('vencer-table').innerHTML = expiring.map(p => {
-        const d = getDaysRemaining(p.fecha_vencimiento);
-        let urgencia, accion, cls;
-        if (d <= 3) { urgencia = 'Crítica'; accion = 'Oferta urgente / Donar'; cls = 'badge-red'; }
-        else if (d <= 7) { urgencia = 'Alta'; accion = 'Aplicar descuento 30%'; cls = 'badge-red'; }
-        else if (d <= 15) { urgencia = 'Media'; accion = 'Promocionar en vitrina'; cls = 'badge-yellow'; }
-        else { urgencia = 'Baja'; accion = 'Monitorear'; cls = 'badge-green'; }
-        return `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${formatDate(p.fecha_vencimiento)}</td><td><span class="badge ${cls}">${d} días</span></td><td><span class="badge ${cls}">${urgencia}</span></td><td>${accion}</td></tr>`;
-    }).join('') || '<tr><td colspan="7" style="text-align:center;color:#9ca3af;">Sin productos por vencer</td></tr>';
+        document.getElementById('vencer-table').innerHTML = expiring.map(p => {
+            const d = getDaysRemaining(p.fecha_vencimiento);
+            let urgencia, accion, cls;
+            if (d <= 3) { urgencia = 'Crítica'; accion = 'Oferta urgente / Donar'; cls = 'badge-red'; }
+            else if (d <= 7) { urgencia = 'Alta'; accion = 'Aplicar descuento 30%'; cls = 'badge-red'; }
+            else if (d <= 15) { urgencia = 'Media'; accion = 'Promocionar en vitrina'; cls = 'badge-yellow'; }
+            else { urgencia = 'Baja'; accion = 'Monitorear'; cls = 'badge-green'; }
+            return `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${formatDate(p.fecha_vencimiento)}</td><td><span class="badge ${cls}">${d} días</span></td><td><span class="badge ${cls}">${urgencia}</span></td><td>${accion}</td></tr>`;
+        }).join('') || '<tr><td colspan="7" style="text-align:center;color:#9ca3af;">Sin productos por vencer</td></tr>';
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function loadEncargadoVencidos() {
-    await fetchProducts();
-    const expired = products.filter(p => p.estado_vencimiento === 'vencido');
-    document.getElementById('vencidos-table').innerHTML = expired.map(p => {
-        const d = Math.abs(getDaysRemaining(p.fecha_vencimiento));
-        return `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${formatDate(p.fecha_vencimiento)}</td><td><span class="badge badge-red">${d} días</span></td><td><span class="badge badge-red">$${(p.precio_compra*p.stock).toFixed(2)}</span></td></tr>`;
-    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">Sin vencidos</td></tr>';
+    try {
+        await fetchProducts();
+        const expired = products.filter(p => p.estado_vencimiento === 'vencido');
+        document.getElementById('vencidos-table').innerHTML = expired.map(p => {
+            const d = Math.abs(getDaysRemaining(p.fecha_vencimiento));
+            return `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${formatDate(p.fecha_vencimiento)}</td><td><span class="badge badge-red">${d} días</span></td><td><span class="badge badge-red">$${(p.precio_compra*p.stock).toFixed(2)}</span></td></tr>`;
+        }).join('') || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">Sin vencidos</td></tr>';
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function loadEncargadoStock() {
-    await fetchProducts();
-    const low = products.filter(p => p.estado_stock === 'bajo').sort((a,b) => a.stock - b.stock);
-    document.getElementById('stock-bajo-table').innerHTML = low.map(p =>
-        `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${p.stock_min}</td><td><span class="badge badge-red">${p.stock_min - p.stock} uds</span></td></tr>`
-    ).join('') || '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">Stock OK</td></tr>';
+    try {
+        await fetchProducts();
+        const low = products.filter(p => p.estado_stock === 'bajo').sort((a,b) => a.stock - b.stock);
+        document.getElementById('stock-bajo-table').innerHTML = low.map(p =>
+            `<tr><td><strong>${p.nombre}</strong></td><td>${p.categoria}</td><td>${p.stock}</td><td>${p.stock_min}</td><td><span class="badge badge-red">${p.stock_min - p.stock} uds</span></td></tr>`
+        ).join('') || '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">Stock OK</td></tr>';
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 // Modal producto
 async function openModal(productId = null) {
-    await fetchCategories();
     const modal = document.getElementById('productModal');
     document.getElementById('productForm').reset();
     document.getElementById('productId').value = '';
 
-    await populateCategorySelects();
+    await fetchCategories();
 
     if (productId) {
         document.getElementById('modalTitle').textContent = 'Editar Producto';
@@ -341,38 +339,37 @@ async function loadAdminCategorias() {
         const catData = await catRes.json();
         const prodData = await prodRes.json();
 
-        if (catData.success) categories = catData.data;
+        if (!catData.success) {
+            showToast('Error: ' + catData.message, 'error');
+            return;
+        }
+
+        categories = catData.data;
         if (prodData.success) products = prodData.data;
 
-        const elCatCount = document.getElementById('cat-count');
-        const elProdCount = document.getElementById('prod-count');
-        const elSinProd = document.getElementById('cat-sin-productos');
-        const elTable = document.getElementById('categories-table');
+        document.getElementById('cat-count').textContent = categories.length;
+        document.getElementById('prod-count').textContent = products.length;
+        const sinProd = categories.filter(c => (c.total_productos || 0) === 0).length;
+        document.getElementById('cat-sin-productos').textContent = sinProd;
 
-        if (elCatCount) elCatCount.textContent = categories.length;
-        if (elProdCount) elProdCount.textContent = products.length;
-        if (elSinProd) {
-            const sinProd = categories.filter(c => (c.total_productos || 0) === 0).length;
-            elSinProd.textContent = sinProd;
-        }
-
-        if (elTable) {
-            elTable.innerHTML = categories.map(c =>
-                `<tr>
-                    <td>${c.id}</td>
-                    <td><strong>${c.nombre}</strong></td>
-                    <td>${c.total_productos || 0}</td>
-                    <td>$${parseFloat(c.valor || 0).toFixed(2)}</td>
-                    <td><span class="badge badge-green">$${parseFloat(c.ganancia || 0).toFixed(2)}</span></td>
-                    <td>${(c.por_vencer || 0) > 0 ? `<span class="badge badge-yellow">${c.por_vencer}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
-                    <td>${(c.vencidos || 0) > 0 ? `<span class="badge badge-red">${c.vencidos}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
-                    <td><button class="btn-icon" onclick="deleteCategory(${c.id}, '${c.nombre}')" title="Eliminar">🗑️</button></td>
-                </tr>`
-            ).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;">No hay categorías. Haz clic en "+ Nueva Categoría" para crear una.</td></tr>';
-        }
+        document.getElementById('categories-table').innerHTML = categories.map(c =>
+            `<tr>
+                <td>${c.id}</td>
+                <td><strong>${c.nombre}</strong></td>
+                <td>${c.total_productos || 0}</td>
+                <td>$${parseFloat(c.valor || 0).toFixed(2)}</td>
+                <td><span class="badge badge-green">$${parseFloat(c.ganancia || 0).toFixed(2)}</span></td>
+                <td>${(c.por_vencer || 0) > 0 ? `<span class="badge badge-yellow">${c.por_vencer}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
+                <td>${(c.vencidos || 0) > 0 ? `<span class="badge badge-red">${c.vencidos}</span>` : '<span style="color:var(--verde)">0</span>'}</td>
+                <td><button class="btn-icon" onclick="deleteCategory(${c.id}, '${c.nombre}')" title="Eliminar">🗑️</button></td>
+            </tr>`
+        ).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;">No hay categorías</td></tr>';
 
         populateCategorySelects();
-    } catch (e) { console.error('Error cargando categorías:', e); }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+        console.error(e);
+    }
 }
 
 async function deleteCategory(id, nombre) {
@@ -383,7 +380,6 @@ async function deleteCategory(id, nombre) {
         if (data.success) {
             showToast(data.message, 'success');
             loadAdminCategorias();
-            populateCategorySelects();
         } else {
             showToast(data.message, 'error');
         }
